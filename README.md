@@ -17,7 +17,6 @@ LinuxLaunder is an disk space analyzer and cleanup tool for Linux systems writte
 ## Requirements
 
 - Python 3.6+
-- curses library (usually included with Python on Unix-like systems)
 
 ## Installation
 
