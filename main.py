@@ -4,7 +4,7 @@ import argparse
 import sys
 import os
 import curses
-from scan_utils import scan_directory
+from scan_utils import run_scan
 from package_utils import get_installed_packages, uninstall_package
 from output_utils import print_list, print_folders, print_packages, print_quiet, set_output_mode, format_size
 from file_utils import remove_file
@@ -20,30 +20,37 @@ class TreeNode:
         self.expanded = False
         self.selected = False
 
-
 def build_folder_tree(items):
     root = TreeNode("", "", 0)
-    for path, size in items:
+    nodes = {"": root}  # Use empty string as key for root
+
+    # Create a dictionary of sizes from items
+    size_dict = {path: size for path, size, _ in items}
+    # print(size_dict)
+
+
+    # Build the tree
+    for path, size, item_type in items:
         parts = path.split(os.sep)
-        current = root
-        for i, part in enumerate(parts):
-            found = False
-            for child in current.children:
-                if child.name == part:
-                    current = child
-                    found = True
-                    break
-            if not found:
-                is_file = (i == len(parts) - 1)
-                new_node = TreeNode(part, os.sep.join(parts[:i+1]), size, is_file)
-                current.children.append(new_node)
-                current = new_node
-    
+        current_path = ""
+        for part in parts:
+            prev_path = current_path
+            current_path = os.path.join(current_path, part)
+            if current_path not in nodes:
+                parent = nodes[prev_path]
+                proper_path = '/' + current_path
+                if not size_dict.get(proper_path):
+                    proper_path = proper_path + '/'
+                new_node = TreeNode(part, current_path, size_dict.get(proper_path, 0), item_type != 'folder')
+                parent.children.append(new_node)
+                nodes[current_path] = new_node
+
+    # Sort children of each node by size
     def sort_children(node):
         node.children.sort(key=lambda x: x.size, reverse=True)
         for child in node.children:
             sort_children(child)
-    
+
     sort_children(root)
     return root
 
@@ -142,12 +149,14 @@ def main():
     print_quiet(f"Max depth: {args.max_depth}")
     print_quiet(f"Hide deep files: {args.hide_deep_files}")
 
-    large_files, large_folders = scan_directory(args.directory, args.ignore, args.scan_type, args.max_depth)
-    large_packages = get_installed_packages(args.distro)
+    large_files, large_folders = run_scan(args.directory, args.ignore, args.scan_type, args.max_depth)
 
-    print_list(large_files, args.threshold, "file", args.max_depth)
+    print_list(large_files, args.threshold, "file")
     print_folders(large_folders, args.threshold)
+    large_packages = get_installed_packages(args.distro)
     print_packages(large_packages, args.threshold)
+
+    large_files = [x for x in large_files if x[1] == 0]
 
     while True:
         print_quiet("\nOptions:")
@@ -158,9 +167,10 @@ def main():
         choice = input("Enter your choice (1-3): ").strip()
         
         if choice == '1':
-            items = [(f[0], f[1]) for f in large_files + large_folders if f[1] > args.threshold * 1024 * 1024]
+            items = [(f[0], f[1], f[2]) for f in large_files if f[1] > args.threshold * 1024 * 1024] + \
+                    [(f[0], f[1], 'folder') for f in large_folders if f[1] > args.threshold * 1024 * 1024]
             root_node = build_folder_tree(items)
-            items_to_remove = curses.wrapper(interactive_selection, root_node, "Select files and folders to remove")
+            items_to_remove = curses.wrapper(interactive_selection, root_node.children[0].children[0], "Select files and folders to remove")
             for item_path in items_to_remove:
                 if os.path.isfile(item_path):
                     remove_file(item_path)
@@ -170,8 +180,8 @@ def main():
             packages_root = TreeNode("", "", 0)
             for package, size in sorted(large_packages, key=lambda x: x[1], reverse=True):
                 if size > args.threshold * 1024:  # size is in KB, threshold is in MB
-                    # Convert size to bytes for consistent handling in TreeNode
                     packages_root.children.append(TreeNode(package, package, size * 1024, True))
+            packages_root.children.sort(key=lambda x: x.size, reverse=True)
             packages_to_remove = curses.wrapper(interactive_selection, packages_root, "Select packages to uninstall")
             for package_name in packages_to_remove:
                 uninstall_package(package_name, args.distro)

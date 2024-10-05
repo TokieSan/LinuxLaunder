@@ -25,10 +25,10 @@ def format_size(size_in_bytes: int) -> str:
         size_in_bytes /= 1024.0
     return f"{size_in_bytes:.2f} PB"
 
-def print_list(items: List[Tuple[str, int, str, int]], threshold: int, item_type: str, max_depth: int):
+def print_list(items: List[Tuple[str, int, str]], threshold: int, item_type: str):
     print_quiet(f"\nLarge {item_type}s:")
-    for item, size, item_subtype, depth in items:
-        if size > threshold * 1024 * 1024 and (not HIDE_DEEP_FILES or depth <= max_depth):  # Convert MB to bytes
+    for item, size, item_subtype in items:
+        if size > threshold * 1024 * 1024:  # Convert MB to bytes
             print_quiet(f"{item} ({item_subtype}): {format_size(size)}")
 
 def print_folders(folders: List[Tuple[str, int]], threshold: int):
