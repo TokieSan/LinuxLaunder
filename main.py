@@ -10,32 +10,61 @@ from output_utils import print_list, print_folders, print_packages, print_quiet,
 from file_utils import remove_file
 from folder_utils import remove_folder
 
-def build_folder_tree(folders):
-    tree = {}
-    for folder, size in folders:
-        parts = folder.split(os.sep)
-        current = tree
-        for part in parts:
-            if part not in current:
-                current[part] = {"__size__": size, "__path__": folder}
-            current = current[part]
-    return tree
+class TreeNode:
+    def __init__(self, name, path, size, is_file=False):
+        self.name = name
+        self.path = path
+        self.size = size
+        self.is_file = is_file
+        self.children = []
+        self.expanded = False
+        self.selected = False
 
-def flatten_folder_tree(tree, prefix="", depth=0):
+def build_folder_tree(items):
+    root = TreeNode("", "", 0)
+    for path, size in items:
+        parts = path.split(os.sep)
+        current = root
+        for i, part in enumerate(parts):
+            found = False
+            for child in current.children:
+                if child.name == part:
+                    current = child
+                    found = True
+                    break
+            if not found:
+                is_file = (i == len(parts) - 1)
+                new_node = TreeNode(part, os.sep.join(parts[:i+1]), size, is_file)
+                current.children.append(new_node)
+                current = new_node
+    
+    def sort_children(node):
+        node.children.sort(key=lambda x: x.size, reverse=True)
+        for child in node.children:
+            sort_children(child)
+    
+    sort_children(root)
+    return root
+
+def flatten_folder_tree(node, prefix="", depth=0):
     flat_list = []
-    for key, value in sorted(tree.items()):
-        if key != "__size__" and key != "__path__":
-            size = value["__size__"]
-            path = value["__path__"]
-            flat_list.append((f"{prefix}{'  ' * depth}├─ {key}", path, size))
-            flat_list.extend(flatten_folder_tree(value, prefix + "│  ", depth + 1))
+    if node.name:
+        if node.selected:
+            expander = "x"
+        elif node.children:
+            expander = "-" if node.expanded else "+"
+        else:
+            expander = " "
+        flat_list.append((f"{prefix}[{expander}] {node.name}", node, depth))
+    if node.expanded or not node.name:
+        for child in node.children:
+            flat_list.extend(flatten_folder_tree(child, prefix + "│   ", depth + 1))
     return flat_list
 
-def interactive_selection(stdscr, items, title):
+def interactive_selection(stdscr, root_node, title):
     curses.curs_set(0)
     stdscr.clear()
     
-    selected = [False] * len(items)
     current_idx = 0
     start_idx = 0
     
@@ -44,40 +73,46 @@ def interactive_selection(stdscr, items, title):
         height, width = stdscr.getmaxyx()
         
         stdscr.addstr(0, 0, title, curses.A_BOLD)
-        stdscr.addstr(1, 0, "Use arrow keys to navigate, Space to select/deselect, Enter to confirm")
+        stdscr.addstr(1, 0, "Use arrow keys to navigate, Enter to expand/collapse, Space to select/deselect, 'q' to confirm")
         
-        for idx, item in enumerate(items[start_idx:start_idx+height-3]):
+        flat_list = flatten_folder_tree(root_node)
+        
+        for idx, (item_str, node, depth) in enumerate(flat_list[start_idx:start_idx+height-3]):
             if start_idx + idx == current_idx:
                 stdscr.addstr(idx+2, 0, "> ", curses.A_BOLD)
             else:
                 stdscr.addstr(idx+2, 0, "  ")
             
-            checkbox = "[x]" if selected[start_idx + idx] else "[ ]"
-            if isinstance(item, tuple):  # For files and folders
-                item_str = f"{checkbox} {item[0]} ({format_size(item[2])})"
-            else:  # For packages
-                item_str = f"{checkbox} {item}"
-            if len(item_str) > width - 3:
-                item_str = item_str[:width-6] + "..."
-            stdscr.addstr(idx+2, 2, item_str)
+            display_str = f"{item_str} ({format_size(node.size)})"
+            if len(display_str) > width - 3:
+                display_str = display_str[:width-6] + "..."
+            stdscr.addstr(idx+2, 2, display_str)
         
         stdscr.refresh()
         
         key = stdscr.getch()
         if key == ord('q'):
-            return []
+            return [node.path for _, node, _ in flat_list if node.selected]
         elif key == ord(' '):
-            selected[current_idx] = not selected[current_idx]
+            current_node = flat_list[current_idx][1]
+            current_node.selected = not current_node.selected
+            # Propagate selection to children
+            def toggle_children(node, state):
+                for child in node.children:
+                    child.selected = state
+                    toggle_children(child, state)
+            toggle_children(current_node, current_node.selected)
+        elif key == 10:  # Enter key
+            if flat_list[current_idx][1].children:
+                flat_list[current_idx][1].expanded = not flat_list[current_idx][1].expanded
         elif key == curses.KEY_UP and current_idx > 0:
             current_idx -= 1
             if current_idx < start_idx:
                 start_idx = current_idx
-        elif key == curses.KEY_DOWN and current_idx < len(items) - 1:
+        elif key == curses.KEY_DOWN and current_idx < len(flat_list) - 1:
             current_idx += 1
             if current_idx >= start_idx + height - 3:
                 start_idx = current_idx - (height - 4)
-        elif key == 10:  # Enter key
-            return [item[1] if isinstance(item, tuple) else item for item, sel in zip(items, selected) if sel]
 
 def main():
     parser = argparse.ArgumentParser(description="Enhanced Disk Space Analyzer")
@@ -115,33 +150,34 @@ def main():
 
     while True:
         print_quiet("\nOptions:")
-        print_quiet("1. Remove files")
-        print_quiet("2. Remove folders")
-        print_quiet("3. Uninstall packages")
-        print_quiet("4. Exit")
+        print_quiet("1. Remove files and folders")
+        print_quiet("2. Uninstall packages")
+        print_quiet("3. Exit")
         
-        choice = input("Enter your choice (1-4): ").strip()
+        choice = input("Enter your choice (1-3): ").strip()
         
         if choice == '1':
-            files_to_show = [(f[0], f[0], f[1]) for f in large_files if f[1] > args.threshold * 1024 * 1024]
-            files_to_remove = curses.wrapper(interactive_selection, files_to_show, "Select files to remove")
-            for file_path in files_to_remove:
-                remove_file(file_path)
+            items = [(f[0], f[1]) for f in large_files + large_folders if f[1] > args.threshold * 1024 * 1024]
+            root_node = build_folder_tree(items)
+            items_to_remove = curses.wrapper(interactive_selection, root_node, "Select files and folders to remove")
+            for item_path in items_to_remove:
+                if os.path.isfile(item_path):
+                    remove_file(item_path)
+                elif os.path.isdir(item_path):
+                    remove_folder(item_path)
         elif choice == '2':
-            folder_tree = build_folder_tree([(f[0], f[1]) for f in large_folders if f[1] > args.threshold * 1024 * 1024])
-            folders_to_show = flatten_folder_tree(folder_tree)
-            folders_to_remove = curses.wrapper(interactive_selection, folders_to_show, "Select folders to remove")
-            for folder_path in folders_to_remove:
-                remove_folder(folder_path)
-        elif choice == '3':
-            packages_to_remove = curses.wrapper(interactive_selection, [p[0] for p in large_packages if p[1] > args.threshold * 1024], "Select packages to uninstall")
+            packages_root = TreeNode("", "", 0)
+            for package, size in sorted(large_packages, key=lambda x: x[1], reverse=True):
+                if size > args.threshold * 1024:
+                    packages_root.children.append(TreeNode(package, package, size, True))
+            packages_to_remove = curses.wrapper(interactive_selection, packages_root, "Select packages to uninstall")
             for package_name in packages_to_remove:
                 uninstall_package(package_name, args.distro)
-        elif choice == '4':
+        elif choice == '3':
             print_quiet("Exiting the program.")
             break
         else:
-            print_quiet("Invalid choice. Please enter a number between 1 and 4.")
+            print_quiet("Invalid choice. Please enter a number between 1 and 3.")
 
 if __name__ == "__main__":
     main()
