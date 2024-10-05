@@ -20,6 +20,7 @@ class TreeNode:
         self.expanded = False
         self.selected = False
 
+
 def build_folder_tree(items):
     root = TreeNode("", "", 0)
     for path, size in items:
@@ -168,8 +169,9 @@ def main():
         elif choice == '2':
             packages_root = TreeNode("", "", 0)
             for package, size in sorted(large_packages, key=lambda x: x[1], reverse=True):
-                if size > args.threshold * 1024:
-                    packages_root.children.append(TreeNode(package, package, size, True))
+                if size > args.threshold * 1024:  # size is in KB, threshold is in MB
+                    # Convert size to bytes for consistent handling in TreeNode
+                    packages_root.children.append(TreeNode(package, package, size * 1024, True))
             packages_to_remove = curses.wrapper(interactive_selection, packages_root, "Select packages to uninstall")
             for package_name in packages_to_remove:
                 uninstall_package(package_name, args.distro)
