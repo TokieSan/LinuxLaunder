@@ -22,7 +22,7 @@ LinuxLaunder is an disk space analyzer and cleanup tool for Linux systems writte
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/LinuxLaunder.git
+   git clone https://github.com/TokieSan/LinuxLaunder.git
    cd LinuxLaunder
    ```
 
