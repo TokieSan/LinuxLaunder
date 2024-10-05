@@ -22,22 +22,11 @@ LinuxLaunder is an disk space analyzer and cleanup tool for Linux systems writte
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/LinuxLaunder.git
+   git clone https://github.com/TokieSan/LinuxLaunder.git
    cd LinuxLaunder
    ```
 
-2. (Optional) Create and activate a virtual environment:
-   ```
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. Install the required packages:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Make the main script executable:
+2. Make the main script executable:
    ```
    chmod +x linuxlaunder.sh
    ```
