@@ -3,11 +3,57 @@
 import argparse
 import sys
 import os
+import curses
 from scan_utils import scan_directory
 from package_utils import get_installed_packages, uninstall_package
 from output_utils import print_list, print_folders, print_packages, print_quiet, set_output_mode
 from file_utils import remove_file
 from folder_utils import remove_folder
+
+def interactive_selection(stdscr, items, title):
+    curses.curs_set(0)
+    stdscr.clear()
+    
+    selected = [False] * len(items)
+    current_idx = 0
+    start_idx = 0
+    
+    while True:
+        stdscr.clear()
+        height, width = stdscr.getmaxyx()
+        
+        stdscr.addstr(0, 0, title, curses.A_BOLD)
+        stdscr.addstr(1, 0, "Use arrow keys to navigate, Space to select/deselect, Enter to confirm")
+        
+        for idx, item in enumerate(items[start_idx:start_idx+height-3]):
+            if start_idx + idx == current_idx:
+                stdscr.addstr(idx+2, 0, "> ", curses.A_BOLD)
+            else:
+                stdscr.addstr(idx+2, 0, "  ")
+            
+            checkbox = "[x]" if selected[start_idx + idx] else "[ ]"
+            item_str = f"{checkbox} {item}"
+            if len(item_str) > width - 3:
+                item_str = item_str[:width-6] + "..."
+            stdscr.addstr(idx+2, 2, item_str)
+        
+        stdscr.refresh()
+        
+        key = stdscr.getch()
+        if key == ord('q'):
+            return []
+        elif key == ord(' '):
+            selected[current_idx] = not selected[current_idx]
+        elif key == curses.KEY_UP and current_idx > 0:
+            current_idx -= 1
+            if current_idx < start_idx:
+                start_idx = current_idx
+        elif key == curses.KEY_DOWN and current_idx < len(items) - 1:
+            current_idx += 1
+            if current_idx >= start_idx + height - 3:
+                start_idx = current_idx - (height - 4)
+        elif key == 10:  # Enter key
+            return [item for item, sel in zip(items, selected) if sel]
 
 def main():
     parser = argparse.ArgumentParser(description="Enhanced Disk Space Analyzer")
@@ -45,28 +91,25 @@ def main():
 
     while True:
         print_quiet("\nOptions:")
-        print_quiet("1. Remove a file")
-        print_quiet("2. Remove a folder")
-        print_quiet("3. Uninstall a package")
+        print_quiet("1. Remove files")
+        print_quiet("2. Remove folders")
+        print_quiet("3. Uninstall packages")
         print_quiet("4. Exit")
         
         choice = input("Enter your choice (1-4): ").strip()
         
         if choice == '1':
-            file_path = input("Enter the path of the file to remove: ").strip()
-            if os.path.isfile(file_path):
+            files_to_remove = curses.wrapper(interactive_selection, [f[0] for f in large_files if f[1] > args.threshold * 1024 * 1024], "Select files to remove")
+            for file_path in files_to_remove:
                 remove_file(file_path)
-            else:
-                print_quiet("Invalid file path.")
         elif choice == '2':
-            folder_path = input("Enter the path of the folder to remove: ").strip()
-            if os.path.isdir(folder_path):
+            folders_to_remove = curses.wrapper(interactive_selection, [f[0] for f in large_folders if f[1] > args.threshold * 1024 * 1024], "Select folders to remove")
+            for folder_path in folders_to_remove:
                 remove_folder(folder_path)
-            else:
-                print_quiet("Invalid folder path.")
         elif choice == '3':
-            package_name = input("Enter the name of the package to uninstall: ").strip()
-            uninstall_package(package_name, args.distro)
+            packages_to_remove = curses.wrapper(interactive_selection, [p[0] for p in large_packages if p[1] > args.threshold * 1024], "Select packages to uninstall")
+            for package_name in packages_to_remove:
+                uninstall_package(package_name, args.distro)
         elif choice == '4':
             print_quiet("Exiting the program.")
             break
