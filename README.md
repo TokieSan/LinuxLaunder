@@ -5,7 +5,7 @@ LinuxLaunder is an disk space analyzer and cleanup tool for Linux systems writte
 
 ## Features
 
-- Scan directories for large files and folders
+- **Multithreaded** quickly scan directories for large files and folders
 - Detect various file types: media, documents, archives, temporary files, packages, and potentially malicious files
 - List installed packages and their sizes
 - Interactive tree-view selection for files, folders, and packages to remove
