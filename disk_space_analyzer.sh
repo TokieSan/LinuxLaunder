@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-PYTHON_SCRIPT="$SCRIPT_DIR/disk_space_analyzer.py"
+PYTHON_SCRIPT="$SCRIPT_DIR/main.py"
 
 # Detect the Linux distribution
 if [ -f /etc/arch-release ]; then
@@ -27,49 +27,27 @@ if [ ! -f "$PYTHON_SCRIPT" ]; then
     exit 1
 fi
 
-# Parse command-line arguments
-DIRECTORY="/"
-IGNORE_DIRS=""
-SCAN_TYPE="all"
-THRESHOLD=100
-VERBOSE=""
-QUIET=""
-MAX_DEPTH=4
+# Check if all required Python modules are present
+required_modules=("file_utils.py" "folder_utils.py" "package_utils.py" "output_utils.py" "scan_utils.py")
+for module in "${required_modules[@]}"; do
+    if [ ! -f "$SCRIPT_DIR/$module" ]; then
+        echo "Required Python module not found: $module"
+        exit 1
+    fi
+done
 
+# Parse command-line arguments
+ARGS=()
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
-        -d|--directory)
-            DIRECTORY="$2"
+        --directory|-d|--ignore|-i|--scan-type|-s|--threshold|-t|--max-depth)
+            ARGS+=("$1" "$2")
             shift
             shift
             ;;
-        -i|--ignore)
-            IGNORE_DIRS="$2"
-            shift
-            shift
-            ;;
-        -s|--scan-type)
-            SCAN_TYPE="$2"
-            shift
-            shift
-            ;;
-        -t|--threshold)
-            THRESHOLD="$2"
-            shift
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE="--verbose"
-            shift
-            ;;
-        -q|--quiet)
-            QUIET="--quiet"
-            shift
-            ;;
-        --max-depth)
-            MAX_DEPTH="$2"
-            shift
+        --verbose|-v|--quiet|-q|--hide-deep-files)
+            ARGS+=("$1")
             shift
             ;;
         *)
@@ -80,12 +58,4 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Run the Python script with the parsed arguments
-python3 "$PYTHON_SCRIPT" \
-    --directory "$DIRECTORY" \
-    --ignore $IGNORE_DIRS \
-    --scan-type "$SCAN_TYPE" \
-    --distro "$DISTRO" \
-    --threshold "$THRESHOLD" \
-    --max-depth "$MAX_DEPTH" \
-    $VERBOSE \
-    $QUIET
+python3 "$PYTHON_SCRIPT" "${ARGS[@]}" --distro "$DISTRO"
